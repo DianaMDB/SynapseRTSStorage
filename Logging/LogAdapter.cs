@@ -1,9 +1,9 @@
 ﻿
 using Microsoft.Extensions.Logging;
 
-namespace MongoSourceConnectorToEventGrid
+namespace SynapseRealTimeSync.Logging
 {
-    public class LoggerAdapter<T> : IAppLogger<T>
+    public class LoggerAdapter<T> : IAppLogger
     {
        
         private readonly ILogger<T> _logger;

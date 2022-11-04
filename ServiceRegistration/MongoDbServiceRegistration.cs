@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
+using SynapseRealTimeSync.Logging;
+using SynapseRealTimeSync.MongoDBChangeStream;
 
-namespace MongoSourceConnectorToEventGrid.ServiceRegistration
+namespace SynapseRealTimeSync.ServiceRegistration
 {
     public class MongoDbServiceRegistration : IServiceRegistration
     {
@@ -10,15 +12,15 @@ namespace MongoSourceConnectorToEventGrid.ServiceRegistration
         {
 
             #region Register MongoDB Client driver
-            services.AddSingleton<IMongoClient>(x => new MongoClient(configuration["mongoDb-connection"]));
+            services.AddSingleton<IMongoClient>(_ => new MongoClient(configuration["mongoDb-connection"]));
             #endregion
 
             #region Register MongoDB Change Stream Service
-            services.AddSingleton<MongoDBChangeStreamService, MongoDBChangeStreamService>();
+            services.AddSingleton<MongoDbChangeStreamService, MongoDbChangeStreamService>();
             #endregion
 
             #region Register logging Service 
-            services.AddSingleton(typeof(IAppLogger<>), typeof(LoggerAdapter<>));
+            services.AddSingleton(typeof(IAppLogger), typeof(LoggerAdapter<>));
 
             #endregion
         }

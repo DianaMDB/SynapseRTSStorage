@@ -5,39 +5,36 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Storage;
-using Azure.Storage.Blobs;
 using Azure.Storage.Files.DataLake;
 using Azure.Storage.Files.DataLake.Models;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using SynapseRealTimeSync.Logging;
 
-namespace MongoSourceConnectorToEventGrid
+namespace SynapseRealTimeSync.MongoDBChangeStream
 {
-    public class MongoDBChangeStreamService
+    public class MongoDbChangeStreamService
     {
-        protected readonly IMongoClient client;
-        protected readonly IMongoDatabase database;
+        protected readonly IMongoClient Client;
+        protected readonly IMongoDatabase Database;
         private readonly IMongoCollection<BsonDocument> collection;
-        private readonly IAppLogger<MongoDBChangeStreamService> logger;
+        private readonly IAppLogger logger;
         private readonly SemaphoreSlim semaphoreSlim = new(1, 1);
-        private BlobServiceClient blobServiceClient;
-        private string container;
-        private string storageAccountCon;
-        private string dLGen2AccountName;
-        private string dLGen2AccountKey;
-        private string fileSystemName;
-        private string dataLakeGen2Uri;
+        private readonly string container;
+        private readonly string dLGen2AccountName;
+        private readonly string dLGen2AccountKey;
+        private readonly string fileSystemName;
+        private readonly string dataLakeGen2Uri;
 
         #region Public Methods
 
-        public MongoDBChangeStreamService(IMongoClient client, IAppLogger<MongoDBChangeStreamService> logger, 
-              IConfiguration configuration)
+        public MongoDbChangeStreamService(IMongoClient client, IAppLogger logger,  IConfiguration configuration)
         {
-            this.database = client.GetDatabase(configuration["mongodb-database"]);
-            this.collection = this.database.GetCollection<BsonDocument>(configuration["mongodb-collection"]);
-            this.client = client;
+            this.Database = client.GetDatabase(configuration["mongodb-database"]);
+            this.collection = this.Database.GetCollection<BsonDocument>(configuration["mongodb-collection"]);
+            this.Client = client;
             this.logger = logger;
             this.dLGen2AccountName = configuration["dataLakeGen2-accountName"];
             this.dLGen2AccountKey = configuration["dataLakeGen2-accountKey"];
@@ -47,10 +44,11 @@ namespace MongoSourceConnectorToEventGrid
         }
 
         /// <summary>
-        /// Intiliaze Thread
+        /// Initialize Thread
         /// </summary>
         public void Init()
         {
+            // ReSharper disable once AsyncVoidLambda
             new Thread(async () => await ObserveCollections()).Start();
         }
         #endregion
@@ -140,26 +138,26 @@ namespace MongoSourceConnectorToEventGrid
             {
 
                 StorageSharedKeyCredential sharedKeyCredential =  new(dLGen2AccountName, dLGen2AccountKey);
-                DataLakeServiceClient dataLakeServiceClient = new DataLakeServiceClient (new Uri(dataLakeGen2Uri), sharedKeyCredential);
+                var dataLakeServiceClient = new DataLakeServiceClient (new Uri(dataLakeGen2Uri), sharedKeyCredential);
               
-                DataLakeFileSystemClient fileSystemClient = dataLakeServiceClient.GetFileSystemClient(fileSystemName);
+                var fileSystemClient = dataLakeServiceClient.GetFileSystemClient(fileSystemName);
 
-                DataLakeDirectoryClient directoryClient = fileSystemClient.GetDirectoryClient(container);
+                var directoryClient = fileSystemClient.GetDirectoryClient(container);
                 
                 // json file type 
                 var filePath = $"{container}-" + Guid.NewGuid() + ".json";
                 DataLakeFileClient fileClient = await directoryClient.CreateFileAsync(filePath);
-                byte[] recordcontent=Encoding.UTF8.GetBytes(updatedDocument.ToJson());
-                await using var ms = new MemoryStream(recordcontent);
+                var recordCBytes=Encoding.UTF8.GetBytes(updatedDocument.ToJson());
+                await using var ms = new MemoryStream(recordCBytes);
                
-                var file = await fileClient.AppendAsync(ms, offset: 0);
-                long fileSize = recordcontent.Length;
+                await fileClient.AppendAsync(ms, offset: 0);
+                long fileSize = recordCBytes.Length;
                 await fileClient.FlushAsync(position: fileSize);
 
-                var fileAccessControl = await fileClient.GetAccessControlAsync();
+                await fileClient.GetAccessControlAsync();
+                
+                var accessControlList = PathAccessControlExtensions.ParseAccessControlList( "user::rwx,group::rwx,other::rw-");
 
-                var accessControlList = PathAccessControlExtensions.ParseAccessControlList(
-                    "user::rwx,group::rwx,other::rw-");
                 await fileClient.SetAccessControlListAsync((accessControlList));
                 
                 var uploadedVer = fileSize > 0;
